@@ -11,7 +11,9 @@ import (
 
 	service "nivasProductBackendApp/Helper/MinIo"
 	"nivasProductBackendApp/routes"
+	CartRoutes "nivasProductBackendApp/routes/Cart"
 	getProductsRoutes "nivasProductBackendApp/routes/Products"
+	WishlistRoutes "nivasProductBackendApp/routes/Wishlist"
 )
 
 func main() {
@@ -53,6 +55,9 @@ func main() {
 	// BrandRegistration.BrandRegistrationRoutes(r)
 	routes.MainRoutes(r)
 	getProductsRoutes.ProductCategory(r)
+	WishlistRoutes.WishlistRoutes(r)
+	CartRoutes.CartRoutes(r)
+
 	fmt.Println("✅Server is Running at Port:" + os.Getenv("PORT"))
 	r.Run("0.0.0.0:" + os.Getenv("PORT"))
 
