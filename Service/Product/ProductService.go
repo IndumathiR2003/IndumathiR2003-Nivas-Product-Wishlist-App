@@ -9,11 +9,10 @@ import (
 	minioService "nivasProductBackendApp/Helper/MinIo"
 	getProductsModel "nivasProductBackendApp/Model/Product"
 	getProductsQuery "nivasProductBackendApp/Query/Product"
-
 )
 
 func ListBrandsandLogoService(db *gorm.DB) getProductsModel.ListBrandsWithLogoOptionsResp {
-			fmt.Println("Registered routes:")
+	fmt.Println("Registered routes:")
 
 	log := logger.InitLogger()
 	var brandList []getProductsModel.BrandOptionsQueryResp
@@ -49,7 +48,6 @@ func ListBrandsandLogoService(db *gorm.DB) getProductsModel.ListBrandsWithLogoOp
 		BrandOptions: brandList,
 	}
 }
-
 
 func ListParentCategorybyGenderService(db *gorm.DB, genderId int) getProductsModel.ListParentCategoryResp {
 	fmt.Println("Registered routes:", genderId)
@@ -152,7 +150,7 @@ func ListParentandSubCategoriesService(db *gorm.DB) getProductsModel.ListParentC
 }
 
 func ListProductsService(db *gorm.DB) getProductsModel.ProductDefaultCatalogResponseOptionsResp {
-		fmt.Println("Registered routes:")
+	fmt.Println("Registered routes:")
 	log := logger.InitLogger()
 	var productList []getProductsModel.ProductDefaultCatalogResponse
 	fmt.Println("Registered routes:", productList)
@@ -173,7 +171,7 @@ func ListProductsService(db *gorm.DB) getProductsModel.ProductDefaultCatalogResp
 				productList[i].RefProductDetailAngleImage = url
 			}
 		}
-		
+
 	}
 
 	return getProductsModel.ProductDefaultCatalogResponseOptionsResp{
@@ -238,8 +236,259 @@ func GetProductDetailsService(db *gorm.DB, RefProductId int) getProductsModel.Li
 	}
 
 	return getProductsModel.ListProductsOptions{
-		Status:           true,
-		Message:          "Products fetched successfully",
+		Status:   true,
+		Message:  "Products fetched successfully",
 		Products: ProductList,
+	}
+}
+
+func ListProductByGenderOrCategoryService(db *gorm.DB, req getProductsModel.ListProductByGenderOrCategoryReq) getProductsModel.ListProductByGenderResp {
+	log := logger.InitLogger()
+	var productsList []getProductsModel.ProductByGenderResp
+	var err error
+
+	if req.RefCategoryGenderId != nil {
+		err = db.Raw(getProductsQuery.GetProductsByGender, *req.RefCategoryGenderId).Scan(&productsList).Error
+	} else if req.RefParentCategoryId != nil {
+		err = db.Raw(getProductsQuery.GetProductsByParentCategory, *req.RefParentCategoryId).Scan(&productsList).Error
+	}
+
+	if err != nil {
+		log.Error("Error fetching products: " + err.Error())
+		return getProductsModel.ListProductByGenderResp{
+			Status:  false,
+			Message: "Failed to fetch products",
+		}
+	}
+
+	// Generate signed URLs
+	for i := range productsList {
+		if productsList[i].RefProductDetailAngleImage != "" {
+			url, err := minioService.GetFileURL(productsList[i].RefProductDetailAngleImage, 60)
+			if err == nil {
+				productsList[i].RefProductDetailAngleImage = url
+			}
+		}
+	}
+
+	return getProductsModel.ListProductByGenderResp{
+		Status:          true,
+		Message:         "Products fetched successfully",
+		ProductByGender: productsList,
+	}
+}
+
+func ListCategoryPageService(db *gorm.DB) getProductsModel.ListCategoryPageOptionsResp {
+	log := logger.InitLogger()
+	var categoryList []getProductsModel.ListCategoryPageResponse
+	fmt.Println("Registered routes:", categoryList)
+	err := db.Raw(getProductsQuery.ListCategoryPageParentCategroryQuery).Scan(&categoryList).Error
+	if err != nil {
+		log.Error("Error fetching Product: " + err.Error())
+		return getProductsModel.ListCategoryPageOptionsResp{
+			Status:  false,
+			Message: "Failed to get Product",
+		}
+	}
+
+	// Generate MinIO URLs
+	for i := range categoryList {
+		if categoryList[i].RefGenderImagePath != "" {
+			url, err := minioService.GetFileURL(categoryList[i].RefGenderImagePath, 60)
+			if err == nil {
+				categoryList[i].RefGenderImagePath = url
+			}
+		}
+		if categoryList[i].RefCategoryImagePath != "" {
+			url, err := minioService.GetFileURL(categoryList[i].RefCategoryImagePath, 60)
+			if err == nil {
+				categoryList[i].RefCategoryImagePath = url
+			}
+		}
+
+	}
+
+	return getProductsModel.ListCategoryPageOptionsResp{
+		Status:  true,
+		Message: "Product fetched successfully",
+		Data:    categoryList,
+	}
+}
+
+func GetParentCategoryService(db *gorm.DB, RefCategoryGenderId int) getProductsModel.GetParentCategoryOptions {
+	fmt.Println("Registered routes:", RefCategoryGenderId)
+	log := logger.InitLogger()
+	var ParentCategoryList []getProductsModel.GetParentCategoryResp
+	fmt.Println("Registered routes:", ParentCategoryList)
+
+	err := db.Raw(getProductsQuery.ListParentCategrorywithSubcategoryQuery, RefCategoryGenderId).Scan(&ParentCategoryList).Error
+	if err != nil {
+		log.Error("Error fetching category list: " + err.Error())
+		return getProductsModel.GetParentCategoryOptions{
+			Status:  false,
+			Message: "Failed to get parent categories",
+		}
+	}
+
+	return getProductsModel.GetParentCategoryOptions{
+		Status:             true,
+		Message:            "ParentCategoryList fetched successfully",
+		ParentCategoryList: ParentCategoryList,
+	}
+}
+
+func GetSubCategoryByParentCategoryService(db *gorm.DB, RefSubCategoryId int) getProductsModel.GetSubCategoryOptions {
+	fmt.Println("Registered routes:", RefSubCategoryId)
+	log := logger.InitLogger()
+	var SubCategoryList []getProductsModel.GetSubCategoryResp
+	fmt.Println("Registered routes:", SubCategoryList)
+
+	err := db.Raw(getProductsQuery.ListSubcategoryQuery, RefSubCategoryId).Scan(&SubCategoryList).Error
+	if err != nil {
+		log.Error("Error fetching category list: " + err.Error())
+		return getProductsModel.GetSubCategoryOptions{
+			Status:  false,
+			Message: "Failed to get parent categories",
+		}
+	}
+
+	return getProductsModel.GetSubCategoryOptions{
+		Status:          true,
+		Message:         "ParentCategoryList fetched successfully",
+		SubCategoryList: SubCategoryList,
+	}
+}
+
+func GetProductsByParentCategoryService(db *gorm.DB, RefParentCategoryId int) getProductsModel.ProductsByParentCategoryOptions {
+	fmt.Println("Registered routes:", RefParentCategoryId)
+	log := logger.InitLogger()
+	var ProductsByParentCategory []getProductsModel.ProductsByParentCategoryResp
+	fmt.Println("Registered routes:", ProductsByParentCategory)
+
+	err := db.Raw(getProductsQuery.ListProductsByParentCategory, RefParentCategoryId).Scan(&ProductsByParentCategory).Error
+	if err != nil {
+		log.Error("Error fetching category list: " + err.Error())
+		return getProductsModel.ProductsByParentCategoryOptions{
+			Status:  false,
+			Message: "Failed to get products by parent categories",
+		}
+	}
+
+	for i := range ProductsByParentCategory {
+		if ProductsByParentCategory[i].RefProductDetailAngleImage != "" {
+			url, err := minioService.GetFileURL(ProductsByParentCategory[i].RefProductDetailAngleImage, 60)
+			if err == nil {
+				ProductsByParentCategory[i].RefProductDetailAngleImage = url
+			}
+		}
+
+	}
+
+	return getProductsModel.ProductsByParentCategoryOptions{
+		Status:                   true,
+		Message:                  "products by parent categories fetched successfully",
+		ProductsByParentCategory: ProductsByParentCategory,
+	}
+}
+
+func GetProductsBySubCategoryService(db *gorm.DB, RefSubCategoryId int) getProductsModel.ProductsBySubCategoryOptions {
+	fmt.Println("Registered routes:", RefSubCategoryId)
+	log := logger.InitLogger()
+	var ProductsBySubCategory []getProductsModel.ProductsBySubCategoryResp
+	fmt.Println("Registered routes:", ProductsBySubCategory)
+
+	err := db.Raw(getProductsQuery.ListProductsByParentCategory, RefSubCategoryId).Scan(&ProductsBySubCategory).Error
+	if err != nil {
+		log.Error("Error fetching products list: " + err.Error())
+		return getProductsModel.ProductsBySubCategoryOptions{
+			Status:  false,
+			Message: "Failed to get products by sub categories",
+		}
+	}
+
+	for i := range ProductsBySubCategory {
+		if ProductsBySubCategory[i].RefProductDetailAngleImage != "" {
+			url, err := minioService.GetFileURL(ProductsBySubCategory[i].RefProductDetailAngleImage, 60)
+			if err == nil {
+				ProductsBySubCategory[i].RefProductDetailAngleImage = url
+			}
+		}
+
+	}
+
+	return getProductsModel.ProductsBySubCategoryOptions{
+		Status:                true,
+		Message:               "products by sub categories fetched successfully",
+		ProductsBySubCategory: ProductsBySubCategory,
+	}
+}
+
+func ListNewArrivalsService(db *gorm.DB) getProductsModel.ListNewArrivalsResponseOptionsResp {
+	log := logger.InitLogger()
+	var productList []getProductsModel.ListNewArrivalsResponse
+	fmt.Println("productList", productList)
+
+	err := db.Raw(getProductsQuery.ListNewArrivalsQuery).Scan(&productList).Error
+	if err != nil {
+		log.Error("Error fetching Product: " + err.Error())
+		return getProductsModel.ListNewArrivalsResponseOptionsResp{
+			Status:  false,
+			Message: "Failed to get Product",
+		}
+	}
+	fmt.Println("Registered routes:", productList[0].RefLogoFileName)
+	// Generate MinIO URLs
+	for i := range productList {
+		if productList[i].RefProductDetailAngleImage != "" {
+			url, err := minioService.GetFileURL(productList[i].RefProductDetailAngleImage, 60)
+			if err == nil {
+				productList[i].RefProductDetailAngleImage = url
+			}
+		}
+		if productList[i].RefLogoFileName != "" {
+			url, err := minioService.GetFileURL(productList[i].RefLogoFileName, 60)
+			if err == nil {
+				productList[i].RefLogoFileName = url
+			}
+		}
+
+	}
+
+	return getProductsModel.ListNewArrivalsResponseOptionsResp{
+		Status:  true,
+		Message: "Product fetched successfully",
+		Data:    productList,
+	}
+}
+
+func GetNewArrivalProductsByBrandService(db *gorm.DB, RefApplicationId int) getProductsModel.GetNewArrivalProductsByBrandOptionsResp {
+	fmt.Println("Registered routes:", RefApplicationId)
+	log := logger.InitLogger()
+	var NewArrivalsByBrand []getProductsModel.GetNewArrivalProductsByBrandResponse
+	fmt.Println("Registered routes:", NewArrivalsByBrand)
+
+	err := db.Raw(getProductsQuery.GetNewArrivalProductsByBrandQuery, RefApplicationId).Scan(&NewArrivalsByBrand).Error
+	if err != nil {
+		log.Error("Error fetching products list: " + err.Error())
+		return getProductsModel.GetNewArrivalProductsByBrandOptionsResp{
+			Status:  false,
+			Message: "Failed to get products by sub categories",
+		}
+	}
+
+	for i := range NewArrivalsByBrand {
+		if NewArrivalsByBrand[i].RefProductDetailAngleImage != "" {
+			url, err := minioService.GetFileURL(NewArrivalsByBrand[i].RefProductDetailAngleImage, 60)
+			if err == nil {
+				NewArrivalsByBrand[i].RefProductDetailAngleImage = url
+			}
+		}
+
+	}
+
+	return getProductsModel.GetNewArrivalProductsByBrandOptionsResp{
+		Status:                       true,
+		Message:                      "products by sub categories fetched successfully",
+		GetNewArrivalProductsByBrand: NewArrivalsByBrand,
 	}
 }

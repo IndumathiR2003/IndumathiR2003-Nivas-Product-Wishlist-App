@@ -2,22 +2,22 @@ package getProductsQuery
 
 var GetBrandListQuery = `
 SELECT
-  bd."refBrandName",
-  bd."refApplicationId",
-  rd."refLogo",
-  rd."refCelebrityImagePath"
+  pm."refPaidBrandMappingId",
+  br."refBrandName",
+  d."refLogo",
+  d."refCelebrityImagePath",
+  pm."isFeatured",
+  pm."isHomePageAllowed"
 FROM
-  brand."refBrandApplication" bd
-LEFT JOIN brand."refDocuments" rd
-  ON CAST(bd."refDocumentsId" AS INTEGER) = CAST(rd."refDocumentsId" AS INTEGER)
-WHERE
-  bd."refApplicationStatus" = 4;
+  brand."refPaidBrandMapping" pm
+  LEFT JOIN brand."refBrandApplication" br ON br."refApplicationId"::INTEGER = pm."refBrandId"::INTEGER
+  LEFT JOIN brand."refDocuments" d ON d."refDocumentsId"::INTEGER = br."refDocumentsId"::INTEGER
 `
 var GetParentCategorybyGenderQuery = `
-SELECT
-  pcm."refParentCateroryMapId",
+SELECT DISTINCT ON (pc."refParentCategoryId")
   g."refCategoryGenderId",
   g."refCategoryGenderName" AS "genderName",
+  pcm."refParentCateroryMapId",
   pc."refParentCategoryName" AS "parentCategoryName",
   pcm."refParentCategoryImagePath",
   pcm."refIfVisible"
@@ -29,10 +29,13 @@ JOIN
 JOIN
   productcategory."refParentCategory" pc
   ON pcm."refParentCategoryId" = pc."refParentCategoryId"
+JOIN
+  product."refproductDefaultCatLog" pdc
+  ON pdc."refParentCategoryId" = pc."refParentCategoryId"
 WHERE
   pcm."refIfVisible" = TRUE AND g."refCategoryGenderId" = $1
 ORDER BY
-  g."refCategoryGenderName",
+  pc."refParentCategoryId",
   pc."refParentCategoryName";
 `
 var ListParentandSubCategoriesQuery = `
@@ -74,9 +77,6 @@ ORDER BY
     pc."refParentCategoryName";
 `
 
-
-
-
 var GetVisibleProductCatalogQuery = `
 SELECT
   pr."refProductId",
@@ -110,6 +110,7 @@ WHERE
 var GetproductDetailsQuery = `
 SELECT
   pr."refProductId",
+  br."refBrandName",
   pr."refProductName",
   pr."refProductDescription",
   pr."refProductMrp",
@@ -121,8 +122,8 @@ SELECT
   pr."refProductAdditionalImage",
   pr."refProductVideo",
   pr."refProductMsp",
-  br."refBrandName",
- pr."refProductWarrantyAndReturnPolicy",
+ 
+  pr."refProductWarrantyAndReturnPolicy",
   CONCAT(
     ROUND(
       (
@@ -135,12 +136,273 @@ SELECT
   ) AS "offerPercentage",
   br."refBrandName" AS "soldBy",
   pr."refProductCountryOfOrigin",
-  pr."refProductManufactureNameAndAddress"
+  pr."refProductManufactureNameAndAddress",
+  ROUND(AVG(CAST(ur."refRatingCount" AS NUMERIC)), 1) AS "averageRating",
+
+  COUNT(ur."refUserReviewId") AS "totalReviews"
 FROM
   product."refproductDefaultCatLog" pr
   LEFT JOIN brand."refBrandApplication" br ON CAST(br."refApplicationId" AS INTEGER) = CAST(pr."refBrandId" AS INTEGER)
   LEFT JOIN productcategory."refParentCategory" pc ON CAST(pc."refParentCategoryId" AS INTEGER) = CAST(pr."refParentCategoryId" AS INTEGER)
   LEFT JOIN productcategory."refSubCategory" sc ON CAST(sc."refSubCategoryId" AS INTEGER) = CAST(pr."refSubCategoryId" AS INTEGER)
+  LEFT JOIN public."refUserReviews" ur ON CAST(ur."refProductId" AS INTEGER) = CAST(pr."refProductId" AS INTEGER)
 WHERE
-  pr."refProductId" = $1;
+  pr."refProductId" = $1
+GROUP BY pr."refProductId",
+br."refApplicationId";
+`
+
+var GetProductsByGender = `
+SELECT
+  pr."refProductId",
+  pr."refProductName",
+  pr."refProductDescription",
+  pr."refProductMrp",
+  pr."refProductDetailAngleImage",
+  pr."refProductMsp",
+  br."refBrandName",
+  g."refCategoryGenderName",
+  pc."refParentCategoryName",
+  CONCAT(
+    ROUND(
+      (
+        (
+          CAST(pr."refProductMrp" AS NUMERIC) - CAST(pr."refProductMsp" AS NUMERIC)
+        ) / CAST(pr."refProductMrp" AS NUMERIC)
+      ) * 100
+    )::INT,
+    '%'
+  ) AS "offerPercentage"
+FROM product."refproductDefaultCatLog" pr
+LEFT JOIN brand."refBrandApplication" br ON br."refApplicationId"::INTEGER = pr."refBrandId"::INTEGER
+LEFT JOIN productcategory."refParentCategory" pc ON pc."refParentCategoryId"::INTEGER = pr."refParentCategoryId"::INTEGER
+LEFT JOIN productcategory."refCategoryGender" g ON g."refCategoryGenderId"::INTEGER = pr."refGenderId"::INTEGER
+WHERE pr."refGenderId" = ?;
+`
+var GetProductsByParentCategory = `
+SELECT
+  pr."refProductId",
+  pr."refProductName",
+  pr."refProductDescription",
+  pr."refProductMrp",
+  pr."refProductDetailAngleImage",
+  pr."refProductMsp",
+  br."refBrandName",
+  g."refCategoryGenderName",
+  pc."refParentCategoryName",
+  CONCAT(
+    ROUND(
+      (
+        (
+          CAST(pr."refProductMrp" AS NUMERIC) - CAST(pr."refProductMsp" AS NUMERIC)
+        ) / CAST(pr."refProductMrp" AS NUMERIC)
+      ) * 100
+    )::INT,
+    '%'
+  ) AS "offerPercentage"
+FROM product."refproductDefaultCatLog" pr
+LEFT JOIN brand."refBrandApplication" br ON br."refApplicationId"::INTEGER = pr."refBrandId"::INTEGER
+LEFT JOIN productcategory."refParentCategory" pc ON pc."refParentCategoryId"::INTEGER = pr."refParentCategoryId"::INTEGER
+LEFT JOIN productcategory."refCategoryGender" g ON g."refCategoryGenderId"::INTEGER = pr."refGenderId"::INTEGER
+WHERE pr."refParentCategoryId" = ?;
+`
+
+var ListCategoryPageParentCategroryQuery = `
+SELECT DISTINCT ON (pc."refParentCategoryId")
+  cg."refCategoryGenderId",
+  cg."refCategoryGenderName",
+  cg."refGenderImagePath",
+  pc."refParentCategoryId",
+  pc."refParentCategoryName",
+  pc."refCategoryImagePath"
+FROM
+  productcategory."refCategoryGender" cg
+  LEFT JOIN productcategory."refParentCategoryMapping" pcm 
+    ON pcm."refCategoryGenderId"::INTEGER = cg."refCategoryGenderId"::INTEGER
+  LEFT JOIN productcategory."refParentCategory" pc 
+    ON pc."refParentCategoryId"::INTEGER = pcm."refParentCategoryId"::INTEGER
+WHERE
+  pc."refParentCategoryId" IS NOT NULL
+ORDER BY
+  pc."refParentCategoryId",
+  cg."refCategoryGenderName";
+`
+
+var ListParentCategrorywithSubcategoryQuery = `
+SELECT
+  cg."refCategoryGenderId",
+  cg."refCategoryGenderName",
+  pc."refParentCategoryId",
+  pc."refParentCategoryName",
+  sc."refSubCategoryId",
+  sc."refSubCategory"
+FROM
+  productcategory."refCategoryGender" cg
+  LEFT JOIN productcategory."refParentCategoryMapping" pcm ON pcm."refCategoryGenderId"::INTEGER = cg."refCategoryGenderId"::INTEGER
+  LEFT JOIN productcategory."refParentCategory" pc ON pc."refParentCategoryId"::INTEGER = pcm."refParentCategoryId"::INTEGER
+  LEFT JOIN productcategory."refParentSubCategoryMapping" scm ON scm."refParentGenderMappingId"::INTEGER = pcm."refParentCateroryMapId"::INTEGER
+  LEFT JOIN productcategory."refSubCategory" sc ON sc."refSubCategoryId"::INTEGER = scm."refSubCategoryId"::INTEGER
+  WHERE cg."refCategoryGenderId"=$1;
+  `
+var ListSubcategoryQuery = `
+SELECT
+  cg."refCategoryGenderId",
+  cg."refCategoryGenderName",
+  pc."refParentCategoryId",
+  pc."refParentCategoryName",
+  sc."refSubCategoryId",
+  sc."refSubCategory"
+FROM
+  productcategory."refCategoryGender" cg
+  LEFT JOIN productcategory."refParentCategoryMapping" pcm ON pcm."refCategoryGenderId"::INTEGER = cg."refCategoryGenderId"::INTEGER
+  LEFT JOIN productcategory."refParentCategory" pc ON pc."refParentCategoryId"::INTEGER = pcm."refParentCategoryId"::INTEGER
+  LEFT JOIN productcategory."refParentSubCategoryMapping" scm ON scm."refParentGenderMappingId"::INTEGER = pcm."refParentCateroryMapId"::INTEGER
+  LEFT JOIN productcategory."refSubCategory" sc ON sc."refSubCategoryId"::INTEGER = scm."refSubCategoryId"::INTEGER
+  WHERE pc."refParentCategoryId"=$1;
+  
+  `
+var ListProductsByParentCategory = `
+SELECT
+  pr."refProductId",
+  br."refBrandName",
+  pr."refProductName",
+  pr."refProductMrp",
+  pc."refParentCategoryName",
+  pr."refProductDetailAngleImage",
+  pr."refProductMsp",
+  sc."refSubCategoryId",
+  sc."refSubCategory",
+  CASE
+    WHEN pr."refProductMrp" > pr."refProductMsp" THEN CONCAT(
+      ROUND(
+        (
+          (
+            CAST(pr."refProductMrp" AS NUMERIC) - CAST(pr."refProductMsp" AS NUMERIC)
+          ) / CAST(pr."refProductMrp" AS NUMERIC)
+        ) * 100
+      )::INT,
+      '%'
+    )
+    ELSE NULL
+  END AS "offerPercentage"
+FROM
+  productcategory."refParentCategory" pc
+  LEFT JOIN product."refproductDefaultCatLog" pr ON pr."refParentCategoryId"::INTEGER = pc."refParentCategoryId"::INTEGER
+  LEFT JOIN brand."refBrandApplication" br ON br."refApplicationId"::INTEGER = pr."refBrandId"::INTEGER
+  LEFT JOIN productcategory."refSubCategory" sc ON sc."refSubCategoryId"::INTEGER = pr."refSubCategoryId"::INTEGER
+WHERE
+  pc."refParentCategoryId" = $1;
+`
+
+var ListProductsBySubCategory = `
+SELECT
+  pr."refProductId",
+  br."refBrandName",
+  pr."refProductName",
+  pr."refProductMrp",
+  sc."refSubCategory",
+  pr."refProductDetailAngleImage",
+  pr."refProductMsp",
+  CASE
+    WHEN pr."refProductMrp" > pr."refProductMsp" THEN CONCAT(
+      ROUND(
+        (
+          (
+            CAST(pr."refProductMrp" AS NUMERIC) - CAST(pr."refProductMsp" AS NUMERIC)
+          ) / CAST(pr."refProductMrp" AS NUMERIC)
+        ) * 100
+      )::INT,
+      '%'
+    )
+    ELSE NULL
+  END AS "offerPercentage"
+FROM
+  productcategory."refSubCategory" sc
+  JOIN product."refproductDefaultCatLog" pr ON sc."refSubCategoryId"::INTEGER = pr."refSubCategoryId"::INTEGER
+  JOIN brand."refBrandApplication" br ON br."refApplicationId"::INTEGER = pr."refBrandId"::INTEGER
+WHERE
+  sc."refSubCategoryId" = $1;
+`
+
+var ListNewArrivalsQuery = `
+SELECT
+  pr."refProductId",
+  pr."refProductName",
+  pr."refProductMrp",
+  pr."refProductDetailAngleImage",
+  pr."refProductMsp",
+  pr."refCreateAt",
+  br."refBrandName",
+  br."refApplicationId",
+  d."refLogo",
+  pc."refParentCategoryName",
+  sc."refSubCategory",
+  CONCAT(
+    ROUND(
+      (
+        (
+          CAST(pr."refProductMrp" AS NUMERIC) - CAST(pr."refProductMsp" AS NUMERIC)
+        ) / CAST(pr."refProductMrp" AS NUMERIC)
+      ) * 100
+    )::INT,
+    '%'
+  ) AS "offerPercentage"
+FROM
+  product."refproductDefaultCatLog" pr
+  LEFT JOIN brand."refBrandApplication" br 
+    ON CAST(br."refApplicationId" AS INTEGER) = CAST(pr."refBrandId" AS INTEGER)
+  LEFT JOIN brand."refDocuments" d 
+    ON CAST(d."refDocumentsId" AS INTEGER) = CAST(br."refDocumentsId" AS INTEGER)
+  LEFT JOIN productcategory."refParentCategory" pc 
+    ON CAST(pc."refParentCategoryId" AS INTEGER) = CAST(pr."refParentCategoryId" AS INTEGER)
+  LEFT JOIN productcategory."refSubCategory" sc 
+    ON CAST(sc."refSubCategoryId" AS INTEGER) = CAST(pr."refSubCategoryId" AS INTEGER)
+  LEFT JOIN brand."refPaidBrandMapping" pbm 
+    ON CAST(pbm."refBrandId" AS INTEGER) = CAST(pr."refBrandId" AS INTEGER)
+WHERE
+  pbm."isHomePageAllowed" IS TRUE
+ORDER BY
+  pr."refCreateAt" DESC;
+`
+var GetNewArrivalProductsByBrandQuery = `
+SELECT
+  pr."refProductId",
+  pr."refProductName",
+  pr."refProductMrp",
+  pr."refProductDetailAngleImage",
+  pr."refProductMsp",
+  pr."refCreateAt",
+  br."refBrandName",
+  br."refApplicationId",
+  d."refLogo",
+  pc."refParentCategoryName",
+  sc."refSubCategory",
+    sc."refSubCategoryId",
+
+  CONCAT(
+    ROUND(
+      (
+        (
+          CAST(pr."refProductMrp" AS NUMERIC) - CAST(pr."refProductMsp" AS NUMERIC)
+        ) / CAST(pr."refProductMrp" AS NUMERIC)
+      ) * 100
+    )::INT,
+    '%'
+  ) AS "offerPercentage"
+FROM
+  product."refproductDefaultCatLog" pr
+  LEFT JOIN brand."refBrandApplication" br 
+    ON CAST(br."refApplicationId" AS INTEGER) = CAST(pr."refBrandId" AS INTEGER)
+  LEFT JOIN brand."refDocuments" d 
+    ON CAST(d."refDocumentsId" AS INTEGER) = CAST(br."refDocumentsId" AS INTEGER)
+  LEFT JOIN productcategory."refParentCategory" pc 
+    ON CAST(pc."refParentCategoryId" AS INTEGER) = CAST(pr."refParentCategoryId" AS INTEGER)
+  LEFT JOIN productcategory."refSubCategory" sc 
+    ON CAST(sc."refSubCategoryId" AS INTEGER) = CAST(pr."refSubCategoryId" AS INTEGER)
+  LEFT JOIN brand."refPaidBrandMapping" pbm 
+    ON CAST(pbm."refBrandId" AS INTEGER) = CAST(pr."refBrandId" AS INTEGER)
+WHERE
+  pbm."refBrandId" = $1
+ORDER BY
+  pr."refCreateAt" DESC;
 `
